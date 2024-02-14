@@ -1,18 +1,24 @@
 package adopet.api.service;
 
-import adopet.api.dto.*;
+import adopet.api.dto.AdocaoDTO;
+import adopet.api.dto.AprovarAdocaoDTO;
+import adopet.api.dto.ReprovarAdocaoDTO;
+import adopet.api.dto.SolicitacaoDeAdocaoDTO;
+import adopet.api.exception.AdocaoException;
 import adopet.api.model.Adocao;
 import adopet.api.model.Pet;
-import adopet.api.model.StatusAdocao;
 import adopet.api.model.Tutor;
 import adopet.api.repository.AdocaoRepository;
 import adopet.api.repository.PetRepository;
 import adopet.api.repository.TutorRepository;
-import jakarta.persistence.EntityNotFoundException;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
+import java.util.Optional;
+
+import static adopet.api.model.StatusAdocao.AGUARDANDO_AVALIACAO;
+import static adopet.api.model.StatusAdocao.APROVADO;
 
 @Service
 public class AdocaoService {
@@ -26,29 +32,61 @@ public class AdocaoService {
     @Autowired
     private AdocaoRepository adocaoRepository;
 
-    public List<AdocaoDTO> listarTodos(){
+    public List<AdocaoDTO> listarTodos() {
 
         return adocaoRepository.findAll().stream().map(AdocaoDTO::new).toList();
     }
-    public AdocaoDTO listar(Long id){
+
+    public AdocaoDTO listar(Long id) {
 
         return adocaoRepository.findById(id).stream().findFirst().map(AdocaoDTO::new).orElse(null);
     }
 
-    public void solicitar(SolicitacaoDeAdocaoDTO dto){
+    public void solicitar(SolicitacaoDeAdocaoDTO dto) {
         Pet pet = petRepository.getReferenceById(dto.idPet());
         Tutor tutor = tutorRepository.getReferenceById(dto.idTutor());
+        var solicitacaoEmAndamento = adocaoRepository.existsByPetIdAndStatus(dto.idPet(), AGUARDANDO_AVALIACAO);
+        var tutorAdocoes = adocaoRepository.countByTutorIdAndStatus(dto.idTutor(), APROVADO);
 
-        adocaoRepository.save(new Adocao(tutor,pet, dto.motivo()));
+        //Pet já adotado;
+        if(pet.getAdotado()){
+           // throw new IllegalStateException("Pet já adotado");
+            //lançando a exception personalizada
+            throw new AdocaoException("Pet já adotado");
+        }
+
+        //Pet com solicitação de adoção em andamento;
+        if(solicitacaoEmAndamento){
+            //throw new UnsupportedOperationException("Pet com adocão em andamento");
+            //lançando a exception personalizada
+            throw new AdocaoException("Pet com adocão em andamento");
+
+        }
+
+        //Tutor com 2 adoções aprovadas.
+        if (tutorAdocoes == 2){
+            //throw new IllegalStateException("Tutor com máximo de adocoes");
+            //lançando a exception personalizada
+            throw new AdocaoException("Tutor com máximo de adocoes");
+        }
+        adocaoRepository.save(new Adocao(tutor, pet, dto.motivo()));
     }
 
-    public void aprovar(AprovarAdocaoDTO dto){
+
+    public void aprovar(AprovarAdocaoDTO dto) {
         Adocao adocao = adocaoRepository.getReferenceById(dto.idAdocao());
         adocao.marcarComoAprovada();
         adocao.getPet().marcarComoAdotado();
     }
 
-    public void reprovar(ReprovarAdocaoDTO dto){
+    public Optional<Adocao> aprovardto(AprovarAdocaoDTO dto) {
+        Adocao adocao = adocaoRepository.getReferenceById(dto.idAdocao());
+        adocao.marcarComoAprovada();
+        adocao.getPet().marcarComoAdotado();
+        return Optional.of(adocao);
+    }
+
+    public void reprovar(ReprovarAdocaoDTO dto) {
         Adocao adocao = adocaoRepository.getReferenceById(dto.idAdocao());
         adocao.marcarComoReprovada(dto.justificativa());
     }
